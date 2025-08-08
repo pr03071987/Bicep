@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "eastus"
+    },
+    "logAnalyticsWorkspaceName": {
+      "value": "la-demo-001"
+    },
+    "dataCollectionRuleName": {
+      "value": "dcr-vm-perf"
+    },
+    "actionGroupName": {
+      "value": "ag-critical-alerts"
+    },
+    "actionGroupEmail": {
+      "value": "admin@contoso.com"
+    },
+    "alertRuleName": {
+      "value": "alert-vm-disk-memory"
+    },
+    "virtualMachineName": {
+      "value": "my-vm-name"
+    }
+  }
+}
