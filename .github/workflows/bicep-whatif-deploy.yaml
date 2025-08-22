@@ -1,0 +1,115 @@
+name: Bicep What-If Deploy
+
+on:
+  # Allow manual workflow runs and environment selection
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - pre-prod
+          - production
+  # Trigger on any Bicep file change in a pull request
+  pull_request:
+    paths:
+      - '**/*.bicep'
+
+jobs:
+  # What-If job: Lint, validate, and preview changes
+  whatif:
+    runs-on: ubuntu-latest
+    # Set the environment based on workflow input or branch name
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || github.ref == 'refs/heads/pre-prod' && 'pre-prod' || github.ref == 'refs/heads/Dev' && 'dev' || 'dev') }}
+    env:
+      # Map environment to resource group
+      AZURE_RESOURCE_GROUP: ${{ fromJson('{"dev":"ctl-dev-rg","pre-prod":"ctl-preprod-rg","production":"ctl-prod-rg"}')[github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || github.ref == 'refs/heads/pre-prod' && 'pre-prod' || github.ref == 'refs/heads/Dev' && 'dev' || 'dev')] }}
+      AZURE_LOCATION: eastus
+      # Select the correct parameters file for the environment
+      PARAMETERS_FILE: main.${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || github.ref == 'refs/heads/pre-prod' && 'pre-prod' || github.ref == 'refs/heads/Dev' && 'dev' || 'dev') }}.parameters.json
+    steps:
+      # Checkout the repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Install the Bicep CLI for linting and validation
+      - name: Set up Bicep CLI
+        uses: Azure/setup-bicep@v1
+
+      # Lint all Bicep files to check for syntax and best practices issues
+      - name: Bicep Lint
+        run: |
+          for file in $(find . -name '*.bicep'); do
+            bicep linter $file
+          done
+
+      # Validate the Bicep template by building and running Azure validation
+      - name: Bicep Validate
+        run: |
+          az bicep build --file main.bicep
+          az deployment group validate \
+            --resource-group $AZURE_RESOURCE_GROUP \
+            --template-file main.bicep \
+            --parameters @$PARAMETERS_FILE \
+            --location $AZURE_LOCATION
+
+      # Authenticate to Azure using a single set of GitHub secrets for all environments
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+
+      # Run Azure What-If deployment to preview changes without applying them
+      - name: Run Bicep What-If
+        run: |
+          az deployment group what-if \
+            --resource-group $AZURE_RESOURCE_GROUP \
+            --template-file main.bicep \
+            --parameters @$PARAMETERS_FILE \
+            --location $AZURE_LOCATION
+
+  # Deploy job: Deploys to Azure after successful what-if
+  deploy:
+    name: Deploy to Azure
+    # Only run on main, pre-prod, or Dev branches
+    if: |
+      github.ref == 'refs/heads/main' ||
+      github.ref == 'refs/heads/pre-prod' ||
+      github.ref == 'refs/heads/Dev'
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || github.ref == 'refs/heads/pre-prod' && 'pre-prod' || github.ref == 'refs/heads/Dev' && 'dev' || 'dev') }}
+    runs-on: ubuntu-latest
+    needs: whatif
+    env:
+      AZURE_RESOURCE_GROUP: ${{ fromJson('{"dev":"ctl-dev-rg","pre-prod":"ctl-preprod-rg","production":"ctl-prod-rg"}')[github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || github.ref == 'refs/heads/pre-prod' && 'pre-prod' || github.ref == 'refs/heads/Dev' && 'dev' || 'dev')] }}
+      AZURE_LOCATION: eastus
+      PARAMETERS_FILE: main.${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || github.ref == 'refs/heads/pre-prod' && 'pre-prod' || github.ref == 'refs/heads/Dev' && 'dev' || 'dev') }}.parameters.json
+    steps:
+      # Checkout the repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Install the Bicep CLI for deployment
+      - name: Set up Bicep CLI
+        uses: Azure/setup-bicep@v1
+
+      # Authenticate to Azure using a single set of GitHub secrets for all environments
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+
+      # Deploy the Bicep template to Azure
+      - name: Deploy Bicep Template
+        run: |
+          az deployment group create \
+            --resource-group $AZURE_RESOURCE_GROUP \
+            --template-file main.bicep \
+            --parameters @$PARAMETERS_FILE \
+            --location $AZURE_LOCATION
