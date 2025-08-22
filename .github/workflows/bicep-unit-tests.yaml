@@ -1,0 +1,46 @@
+name: Bicep Unit Tests
+
+on:
+  pull_request:
+    paths:
+      - '**/*.bicep'
+  push:
+    paths:
+      - '**/*.bicep'
+
+jobs:
+  bicep-lint-build-validate:
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout the repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Install the Bicep CLI for linting and validation
+      - name: Set up Bicep CLI
+        uses: Azure/setup-bicep@v1
+
+      # Lint and build all Bicep files to check for syntax and best practices issues
+      - name: Lint and Build Bicep files
+        run: |
+          for file in $(find . -name '*.bicep'); do
+            echo "Linting $file"
+            bicep linter $file
+            echo "Building $file"
+            bicep build $file
+          done
+
+      # Validate the main Bicep file at subscription scope (requires Azure login)
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Validate Bicep at Subscription Scope
+        run: |
+          az deployment sub validate \
+            --location eastus \
+            --template-file main.bicep \
+            --parameters @main.parameters.json
