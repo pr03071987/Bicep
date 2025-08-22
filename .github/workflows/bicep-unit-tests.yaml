@@ -30,7 +30,9 @@ jobs:
             bicep build $file
           done
 
-      # Validate the main Bicep file at subscription scope (requires Azure login)1
+   
+
+      # Validate the main Bicep file at subscription scope (requires Azure login)
       - name: Azure Login
         uses: azure/login@v2
         with:
