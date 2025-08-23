@@ -38,6 +38,10 @@ jobs:
           client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
 
+      - name: Install bicep CLI
+        run: |
+          az bicep install
+
       - name: Validate Bicep at Subscription Scope
         run: |
           az deployment sub validate \
